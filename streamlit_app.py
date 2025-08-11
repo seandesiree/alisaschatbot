@@ -2,13 +2,14 @@ import os
 import streamlit as st
 from dotenv import load_dotenv
 
-# Only import what we actually use from LangChain - avoid problematic modules
+# Import LangChain components individually to avoid problematic import chains
 from langchain.text_splitter import RecursiveCharacterTextSplitter
 from langchain.prompts import PromptTemplate
-from langchain.chains import LLMChain
 from langchain.llms import OpenAI
-from langchain.document_loaders import TextLoader
 from langchain.schema import Document
+
+# Import LLMChain directly from its module to avoid the problematic import chain
+from langchain.chains.llm import LLMChain
 
 load_dotenv()
 
@@ -87,8 +88,9 @@ def load_and_process_documents():
 def setup_langchain_qa(_openai_api_key):
     """Setup LangChain QA system"""
     
-    # Create LangChain prompt template
-    template = """You are an expert assistant specializing in the work and artistic practice of Alisa Sikelianos-Carter.
+    try:
+        # Create LangChain prompt template
+        template = """You are an expert assistant specializing in the work and artistic practice of Alisa Sikelianos-Carter.
 
 Use the following context to answer questions about her work, artistic process, philosophy, influences, and background. Be accurate, insightful, and conversational.
 
@@ -98,27 +100,31 @@ Question: {question}
 
 Answer:"""
 
-    prompt = PromptTemplate(
-        template=template,
-        input_variables=["context", "question"]
-    )
-    
-    # Create LangChain LLM
-    llm = OpenAI(
-        openai_api_key=_openai_api_key,
-        temperature=0.3,
-        max_tokens=500,
-        model_name="gpt-3.5-turbo-instruct"  # Use completion model for old OpenAI version
-    )
-    
-    # Create LangChain chain
-    qa_chain = LLMChain(
-        llm=llm,
-        prompt=prompt,
-        verbose=False
-    )
-    
-    return qa_chain
+        prompt = PromptTemplate(
+            template=template,
+            input_variables=["context", "question"]
+        )
+        
+        # Create LangChain LLM
+        llm = OpenAI(
+            openai_api_key=_openai_api_key,
+            temperature=0.3,
+            max_tokens=500,
+            model_name="gpt-3.5-turbo-instruct"
+        )
+        
+        # Create LangChain chain using direct import
+        qa_chain = LLMChain(
+            llm=llm,
+            prompt=prompt,
+            verbose=False
+        )
+        
+        return qa_chain
+        
+    except Exception as e:
+        st.error(f"Error setting up LangChain: {e}")
+        return None
 
 def find_relevant_chunks(documents, query, max_chunks=3):
     """Simple retrieval function using keyword matching"""
@@ -142,6 +148,10 @@ with st.spinner("Loading documents with LangChain..."):
 
 # Setup LangChain QA system
 qa_chain = setup_langchain_qa(openai_api_key)
+
+if qa_chain is None:
+    st.error("Failed to initialize LangChain. Please check your OpenAI API key.")
+    st.stop()
 
 # Show loaded data info
 with st.expander("📊 LangChain Document Processing"):
@@ -206,10 +216,29 @@ if prompt := st.chat_input("Ask about Alisa's work, process, or philosophy..."):
         except Exception as e:
             st.error(f"Error with LangChain processing: {str(e)}")
             
-            # Show debug info
-            with st.expander("Debug Info"):
-                import traceback
-                st.code(traceback.format_exc())
+            # Fallback without LangChain
+            try:
+                import openai
+                client = openai.OpenAI(api_key=openai_api_key)
+                
+                relevant_docs = find_relevant_chunks(documents, prompt)
+                context = "\n\n".join([doc.page_content for doc in relevant_docs])
+                
+                response = client.chat.completions.create(
+                    model="gpt-3.5-turbo",
+                    messages=[
+                        {"role": "system", "content": f"You are an expert on Alisa Sikelianos-Carter. Context: {context[:3000]}"},
+                        {"role": "user", "content": prompt}
+                    ]
+                )
+                
+                fallback_response = response.choices[0].message.content
+                st.warning("Used fallback method (LangChain error)")
+                st.markdown(fallback_response)
+                st.session_state.messages.append({"role": "assistant", "content": fallback_response})
+                
+            except Exception as fallback_error:
+                st.error(f"Fallback also failed: {fallback_error}")
 
 # Sidebar
 with st.sidebar:
@@ -229,12 +258,12 @@ with st.sidebar:
     
     st.markdown("---")
     st.subheader("🔧 LangChain Features Used:")
-    st.write("- Document Loaders")
-    st.write("- Text Splitters")
+    st.write("- Document Objects")
+    st.write("- Text Splitters") 
     st.write("- Prompt Templates")
     st.write("- LLM Chains")
     st.write("- Document Retrieval")
-    st.write("- Schema Objects")
+    st.write("- Schema Management")
     
     st.markdown("---")
     st.write(f"**LangChain Version:** 0.0.350")
