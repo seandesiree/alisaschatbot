@@ -7,24 +7,59 @@ from langchain.text_splitter import RecursiveCharacterTextSplitter
 from langchain.prompts import PromptTemplate
 from langchain.schema import Document
 
-# Import LLMChain directly to avoid problematic import chains
-from langchain.chains.llm import LLMChain
-
 load_dotenv()
-
-# Handle API key for both local and deployed environments
-if hasattr(st, 'secrets') and "OPENAI_API_KEY" in st.secrets:
-    openai_api_key = st.secrets["OPENAI_API_KEY"]
-else:
-    openai_api_key = os.getenv("OPENAI_API_KEY")
-
-if not openai_api_key:
-    st.error("OpenAI API key not found. Please add it to your secrets or .env file.")
-    st.stop()
 
 st.set_page_config(page_title="Alisa Sikelianos-Carter Chatbot", page_icon="🎨")
 st.title("🎨 Ask Alisa Sikelianos-Carter")
 st.write("AI chatbot using LangChain for document processing and conversation management")
+
+def get_openai_key():
+    """Get OpenAI API key with proper validation"""
+    api_key = None
+    
+    # Try Streamlit secrets first
+    if hasattr(st, 'secrets') and "OPENAI_API_KEY" in st.secrets:
+        api_key = st.secrets["OPENAI_API_KEY"]
+        st.success("🔑 API key loaded from Streamlit secrets")
+    
+    # Try environment variable
+    elif os.getenv("OPENAI_API_KEY"):
+        api_key = os.getenv("OPENAI_API_KEY")
+        st.success("🔑 API key loaded from environment")
+    
+    if not api_key:
+        st.error("❌ OpenAI API key not found!")
+        st.info("Please add your API key to Streamlit secrets or .env file")
+        return None
+    
+    # Basic validation
+    if not api_key.startswith("sk-"):
+        st.error("❌ Invalid API key format (should start with 'sk-')")
+        return None
+    
+    if len(api_key) < 20:
+        st.error("❌ API key seems too short")
+        return None
+    
+    return api_key
+
+def validate_openai_connection(api_key):
+    """Test OpenAI connection"""
+    try:
+        import openai
+        client = openai.OpenAI(api_key=api_key)
+        
+        # Test with a minimal API call
+        response = client.chat.completions.create(
+            model="gpt-3.5-turbo",
+            messages=[{"role": "user", "content": "Hi"}],
+            max_tokens=5
+        )
+        
+        return client, True
+    except Exception as e:
+        st.error(f"❌ OpenAI connection failed: {str(e)}")
+        return None, False
 
 @st.cache_data
 def load_and_process_documents():
@@ -83,11 +118,8 @@ def load_and_process_documents():
     
     return split_docs, files_loaded
 
-def create_custom_llm_chain(api_key):
-    """Create a custom LLM chain using direct OpenAI client"""
-    import openai
-    
-    client = openai.OpenAI(api_key=api_key)
+def create_qa_system(openai_client):
+    """Create QA system using LangChain prompt templates"""
     
     # Create LangChain prompt template
     template = """You are an expert assistant specializing in the work and artistic practice of Alisa Sikelianos-Carter.
@@ -105,16 +137,19 @@ Answer:"""
         input_variables=["context", "question"]
     )
     
-    class CustomLLMChain:
-        def __init__(self, client, prompt):
+    class QASystem:
+        def __init__(self, client, prompt_template):
             self.client = client
-            self.prompt = prompt
+            self.prompt_template = prompt_template
         
-        def run(self, context, question):
-            # Format the prompt using LangChain's PromptTemplate
-            formatted_prompt = self.prompt.format(context=context, question=question)
+        def answer(self, context, question):
+            # Use LangChain prompt template
+            formatted_prompt = self.prompt_template.format(
+                context=context, 
+                question=question
+            )
             
-            # Use OpenAI client directly
+            # Call OpenAI
             response = self.client.chat.completions.create(
                 model="gpt-3.5-turbo",
                 messages=[{"role": "user", "content": formatted_prompt}],
@@ -124,7 +159,7 @@ Answer:"""
             
             return response.choices[0].message.content
     
-    return CustomLLMChain(client, prompt)
+    return QASystem(openai_client, prompt)
 
 def find_relevant_chunks(documents, query, max_chunks=3):
     """Simple retrieval function using keyword matching"""
@@ -142,12 +177,25 @@ def find_relevant_chunks(documents, query, max_chunks=3):
     doc_scores.sort(key=lambda x: x[0], reverse=True)
     return [doc for _, doc in doc_scores[:max_chunks]]
 
+# Get and validate API key
+openai_api_key = get_openai_key()
+
+if not openai_api_key:
+    st.stop()
+
+# Test OpenAI connection
+with st.spinner("Testing OpenAI connection..."):
+    openai_client, connection_ok = validate_openai_connection(openai_api_key)
+
+if not connection_ok:
+    st.stop()
+
 # Load and process documents using LangChain
-with st.spinner("Loading documents with LangChain..."):
+with st.spinner("Processing documents with LangChain..."):
     documents, files_loaded = load_and_process_documents()
 
-# Setup custom LLM chain that combines LangChain and OpenAI
-qa_chain = create_custom_llm_chain(openai_api_key)
+# Create QA system
+qa_system = create_qa_system(openai_client)
 
 # Show loaded data info
 with st.expander("📊 LangChain Document Processing"):
@@ -162,12 +210,14 @@ with st.expander("📊 LangChain Document Processing"):
         st.write(f"Source: {sample_doc.metadata.get('source', 'Unknown')}")
         st.write(f"Content: {sample_doc.page_content[:200]}...")
 
+st.success("✅ System initialized successfully!")
+
 # Initialize chat history
 if "messages" not in st.session_state:
     st.session_state.messages = [
         {
             "role": "assistant", 
-            "content": "Hi! I use LangChain for document processing and prompt management, combined with OpenAI for responses. I'm trained on Alisa Sikelianos-Carter's information. What would you like to know about her work?"
+            "content": "Hi! I use LangChain for document processing and prompt management. I'm ready to answer questions about Alisa Sikelianos-Carter's work and artistic practice. What would you like to know?"
         }
     ]
 
@@ -183,39 +233,32 @@ if prompt := st.chat_input("Ask about Alisa's work, process, or philosophy..."):
     with st.chat_message("user"):
         st.markdown(prompt)
 
-    # Generate response using LangChain + OpenAI
+    # Generate response
     with st.chat_message("assistant"):
         try:
             with st.spinner("Processing with LangChain..."):
-                # Use LangChain retrieval to find relevant documents
+                # Use LangChain retrieval
                 relevant_docs = find_relevant_chunks(documents, prompt)
                 
-                # Combine relevant context
+                # Combine context
                 context = "\n\n".join([doc.page_content for doc in relevant_docs])
                 
-                # Use custom chain (LangChain prompt + OpenAI)
-                response = qa_chain.run(context=context[:4000], question=prompt)
+                # Get answer using LangChain prompt + OpenAI
+                response = qa_system.answer(context[:4000], prompt)
                 
                 st.markdown(response)
                 
-                # Show sources used
-                with st.expander("📚 LangChain Retrieval Results"):
-                    st.write(f"Used {len(relevant_docs)} document chunks:")
+                # Show sources
+                with st.expander("📚 Sources Used"):
                     for i, doc in enumerate(relevant_docs):
-                        st.write(f"**Chunk {i+1}:** {doc.metadata.get('source', 'Unknown')}")
-                        st.write(f"Content: {doc.page_content[:200]}...")
-                        st.write("---")
+                        st.write(f"**{i+1}.** {doc.metadata.get('source', 'Unknown')}")
+                        st.write(f"_{doc.page_content[:150]}..._")
                 
                 # Add to chat history
                 st.session_state.messages.append({"role": "assistant", "content": response})
                 
         except Exception as e:
-            st.error(f"Error: {str(e)}")
-            
-            # Show debug info
-            with st.expander("Debug Info"):
-                import traceback
-                st.code(traceback.format_exc())
+            st.error(f"Error generating response: {str(e)}")
 
 # Sidebar
 with st.sidebar:
@@ -234,17 +277,16 @@ with st.sidebar:
             st.rerun()
     
     st.markdown("---")
-    st.subheader("🔧 LangChain Features Used:")
-    st.write("- Document Objects")
-    st.write("- Text Splitters (RecursiveCharacterTextSplitter)")
+    st.subheader("🔧 LangChain Features:")
+    st.write("- Document Processing")
+    st.write("- Text Splitters")
     st.write("- Prompt Templates") 
-    st.write("- Schema Management")
-    st.write("- Document Retrieval")
-    st.write("- Custom Chain Implementation")
+    st.write("- Schema Objects")
+    st.write("- Retrieval System")
     
     st.markdown("---")
-    st.success("- LangChain + OpenAI Integration Working")
-    st.write(f"**Documents Processed:** {len(documents)}")
+    st.write(f"**Status:** - Working")
+    st.write(f"**Documents:** {len(documents)} chunks")
 
 st.markdown("---")
-st.markdown("*Built with LangChain + OpenAI + Streamlit*")
+st.markdown("*LangChain + OpenAI + Streamlit Integration*")
