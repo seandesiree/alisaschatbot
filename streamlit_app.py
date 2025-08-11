@@ -1,8 +1,6 @@
 import os
 import streamlit as st
 from dotenv import load_dotenv
-
-# Import LangChain components individually
 from langchain.text_splitter import RecursiveCharacterTextSplitter
 from langchain.prompts import PromptTemplate
 from langchain.schema import Document
@@ -17,12 +15,10 @@ def get_openai_key():
     """Get OpenAI API key with proper validation"""
     api_key = None
     
-    # Try Streamlit secrets first
     if hasattr(st, 'secrets') and "OPENAI_API_KEY" in st.secrets:
         api_key = st.secrets["OPENAI_API_KEY"]
         st.success("🔑 API key loaded from Streamlit secrets")
     
-    # Try environment variable
     elif os.getenv("OPENAI_API_KEY"):
         api_key = os.getenv("OPENAI_API_KEY")
         st.success("🔑 API key loaded from environment")
@@ -32,7 +28,6 @@ def get_openai_key():
         st.info("Please add your API key to Streamlit secrets or .env file")
         return None
     
-    # Basic validation
     if not api_key.startswith("sk-"):
         st.error("❌ Invalid API key format (should start with 'sk-')")
         return None
@@ -48,10 +43,8 @@ def validate_openai_connection(api_key):
     try:
         import openai
         
-        # Set API key globally for openai 0.28.1
         openai.api_key = api_key
         
-        # Test with a minimal completion
         response = openai.ChatCompletion.create(
             model="gpt-3.5-turbo",
             messages=[{"role": "user", "content": "Hi"}],
@@ -151,7 +144,6 @@ Answer:"""
                 question=question
             )
             
-            # Call OpenAI with old API
             response = openai.ChatCompletion.create(
                 model="gpt-3.5-turbo",
                 messages=[{"role": "user", "content": formatted_prompt}],
@@ -179,13 +171,11 @@ def find_relevant_chunks(documents, query, max_chunks=3):
     doc_scores.sort(key=lambda x: x[0], reverse=True)
     return [doc for _, doc in doc_scores[:max_chunks]]
 
-# Get and validate API key
 openai_api_key = get_openai_key()
 
 if not openai_api_key:
     st.stop()
 
-# Test OpenAI connection
 with st.spinner("Testing OpenAI connection..."):
     connection_ok, message = validate_openai_connection(openai_api_key)
     
@@ -199,7 +189,6 @@ with st.spinner("Testing OpenAI connection..."):
 with st.spinner("Processing documents with LangChain..."):
     documents, files_loaded = load_and_process_documents()
 
-# Create QA system
 qa_system = create_qa_system()
 
 # Show loaded data info
@@ -215,7 +204,7 @@ with st.expander("📊 LangChain Document Processing"):
         st.write(f"Source: {sample_doc.metadata.get('source', 'Unknown')}")
         st.write(f"Content: {sample_doc.page_content[:200]}...")
 
-st.success("✅ System ready!")
+st.success("- System ready!")
 
 # Initialize chat history
 if "messages" not in st.session_state:
@@ -265,7 +254,6 @@ if prompt := st.chat_input("Ask about Alisa's work, process, or philosophy..."):
         except Exception as e:
             st.error(f"Error generating response: {str(e)}")
 
-# Sidebar
 with st.sidebar:
     st.subheader("💡 Try asking:")
     example_questions = [
