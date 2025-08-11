@@ -44,22 +44,23 @@ def get_openai_key():
     return api_key
 
 def validate_openai_connection(api_key):
-    """Test OpenAI connection"""
+    """Test OpenAI connection with older API"""
     try:
         import openai
-        client = openai.OpenAI(api_key=api_key)
         
-        # Test with a minimal API call
-        response = client.chat.completions.create(
+        # Set API key globally for openai 0.28.1
+        openai.api_key = api_key
+        
+        # Test with a minimal completion
+        response = openai.ChatCompletion.create(
             model="gpt-3.5-turbo",
             messages=[{"role": "user", "content": "Hi"}],
             max_tokens=5
         )
         
-        return client, True
+        return True, "Connection successful"
     except Exception as e:
-        st.error(f"❌ OpenAI connection failed: {str(e)}")
-        return None, False
+        return False, str(e)
 
 @st.cache_data
 def load_and_process_documents():
@@ -118,8 +119,8 @@ def load_and_process_documents():
     
     return split_docs, files_loaded
 
-def create_qa_system(openai_client):
-    """Create QA system using LangChain prompt templates"""
+def create_qa_system():
+    """Create QA system using LangChain prompt templates and OpenAI 0.28.1"""
     
     # Create LangChain prompt template
     template = """You are an expert assistant specializing in the work and artistic practice of Alisa Sikelianos-Carter.
@@ -138,19 +139,20 @@ Answer:"""
     )
     
     class QASystem:
-        def __init__(self, client, prompt_template):
-            self.client = client
+        def __init__(self, prompt_template):
             self.prompt_template = prompt_template
         
         def answer(self, context, question):
+            import openai
+            
             # Use LangChain prompt template
             formatted_prompt = self.prompt_template.format(
                 context=context, 
                 question=question
             )
             
-            # Call OpenAI
-            response = self.client.chat.completions.create(
+            # Call OpenAI with old API
+            response = openai.ChatCompletion.create(
                 model="gpt-3.5-turbo",
                 messages=[{"role": "user", "content": formatted_prompt}],
                 max_tokens=500,
@@ -159,7 +161,7 @@ Answer:"""
             
             return response.choices[0].message.content
     
-    return QASystem(openai_client, prompt)
+    return QASystem(prompt)
 
 def find_relevant_chunks(documents, query, max_chunks=3):
     """Simple retrieval function using keyword matching"""
@@ -185,17 +187,20 @@ if not openai_api_key:
 
 # Test OpenAI connection
 with st.spinner("Testing OpenAI connection..."):
-    openai_client, connection_ok = validate_openai_connection(openai_api_key)
-
-if not connection_ok:
-    st.stop()
+    connection_ok, message = validate_openai_connection(openai_api_key)
+    
+    if connection_ok:
+        st.success(f"✅ OpenAI connection successful!")
+    else:
+        st.error(f"❌ OpenAI connection failed: {message}")
+        st.stop()
 
 # Load and process documents using LangChain
 with st.spinner("Processing documents with LangChain..."):
     documents, files_loaded = load_and_process_documents()
 
 # Create QA system
-qa_system = create_qa_system(openai_client)
+qa_system = create_qa_system()
 
 # Show loaded data info
 with st.expander("📊 LangChain Document Processing"):
@@ -210,7 +215,7 @@ with st.expander("📊 LangChain Document Processing"):
         st.write(f"Source: {sample_doc.metadata.get('source', 'Unknown')}")
         st.write(f"Content: {sample_doc.page_content[:200]}...")
 
-st.success("✅ System initialized successfully!")
+st.success("✅ System ready!")
 
 # Initialize chat history
 if "messages" not in st.session_state:
@@ -285,7 +290,7 @@ with st.sidebar:
     st.write("- Retrieval System")
     
     st.markdown("---")
-    st.write(f"**Status:** - Working")
+    st.info("Using OpenAI 0.28.1 for compatibility")
     st.write(f"**Documents:** {len(documents)} chunks")
 
 st.markdown("---")
