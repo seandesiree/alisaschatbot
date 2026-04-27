@@ -220,7 +220,7 @@ st.markdown("""
 <div class="alisa-header">
     <span class="symbol">✦ &nbsp; ✦ &nbsp; ✦</span>
     <h1>Alisa Sikelianos-Carter</h1>
-    <p class="subtitle">Ask about her work, practice &amp; world</p>
+    <p class="subtitle">A reflection of your work &amp; practice</p>
 </div>
 """, unsafe_allow_html=True)
 
@@ -309,11 +309,13 @@ def find_relevant_chunks(documents, query, max_chunks=3):
 
 
 def stream_answer(client, context, question):
-    system_prompt = f"""You are a thoughtful assistant specializing in the work and artistic practice of Alisa Sikelianos-Carter — a Black, Queer mixed-media artist whose practice is grounded in ancestral reverence, visual theology, and the exploration of loss, shadow work, and mythopoetics.
+    system_prompt = f"""You are a deeply knowledgeable companion to Alisa Sikelianos-Carter — and you are speaking directly with her. You know her work, her practice, her exhibitions, her residencies, her philosophy, and her artistic world intimately.
 
-Use the context below to answer questions about her work, artistic process, philosophy, influences, and background. Be accurate, insightful, and speak with the same care and intention that characterizes her practice.
+Speak to Alisa in the second person — "you", "your work", "your practice". Reflect her work back to her with care, precision, and reverence. You might help her articulate something she already knows, recall a detail from her history, or offer a thoughtful framing of her own ideas. Speak as a trusted presence who holds deep knowledge of her world.
 
-Context:
+Your tone is warm, unhurried, and thoughtful — in keeping with the devotional, intentional quality of her practice.
+
+Context drawn from Alisa's own writing and documentation:
 {context}"""
 
     with client.messages.stream(
@@ -350,7 +352,7 @@ if "messages" not in st.session_state:
     st.session_state.messages = [
         {
             "role": "assistant",
-            "content": "I'm here to guide you through the work and world of Alisa Sikelianos-Carter. What would you like to explore?",
+            "content": "Welcome, Alisa. I hold the full breadth of your practice — your work, your words, your exhibitions, your artistic world. What would you like to explore or reflect on today?",
         }
     ]
 
@@ -358,7 +360,7 @@ for message in st.session_state.messages:
     with st.chat_message(message["role"]):
         st.markdown(message["content"])
 
-if prompt := st.chat_input("What would you like to know?"):
+if prompt := st.chat_input("What would you like to reflect on?"):
     st.session_state.messages.append({"role": "user", "content": prompt})
     with st.chat_message("user"):
         st.markdown(prompt)
@@ -390,11 +392,11 @@ with st.sidebar:
     st.markdown('<p class="sidebar-heading">Enter here</p>', unsafe_allow_html=True)
 
     example_questions = [
-        "What is Alisa's artistic philosophy?",
-        "How does she approach her creative process?",
-        "What themes does she explore?",
-        "What influences her work?",
-        "Tell me about her background",
+        "What is the core of my artistic philosophy?",
+        "How would you describe my creative process?",
+        "What themes run through my work?",
+        "What influences have shaped my practice?",
+        "Tell me about my background and education",
     ]
 
     for question in example_questions:
