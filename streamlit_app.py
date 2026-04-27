@@ -367,9 +367,12 @@ if prompt := st.chat_input("What would you like to know?"):
         try:
             relevant_docs = find_relevant_chunks(documents, prompt)
             context = "\n\n".join([doc.page_content for doc in relevant_docs])
-            response_text = st.write_stream(
-                stream_answer(anthropic_client, context[:4000], prompt)
-            )
+            placeholder = st.empty()
+            response_text = ""
+            for chunk in stream_answer(anthropic_client, context[:4000], prompt):
+                response_text += chunk
+                placeholder.markdown(response_text + "▌")
+            placeholder.markdown(response_text)
             with st.expander("sources"):
                 for i, doc in enumerate(relevant_docs):
                     st.write(f"**{i + 1}.** {doc.metadata.get('source', 'Unknown')}")
